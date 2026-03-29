@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Tumor Segmentation Demo</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Brain Tumor Segmentation Demo</h1>
+            <p>Select a sample patient file to perform inference and view saliency maps.</p>
+        </header>
+
+        <main>
+            <div class="controls-card">
+                <div class="control-group">
+                    <label for="file-select">Select Patient File:</label>
+                    <select id="file-select">
+                        {% for file in demo_files %}
+                            <option value="{{ file }}">{{ file }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                
+                <div class="control-group">
+                    <label for="slice-slider">Slice Index: <span id="slice-val">75</span></label>
+                    <input type="range" id="slice-slider" min="0" max="154" value="75">
+                </div>
+
+                <button id="run-btn" class="btn">Run Inference / Update View</button>
+            </div>
+
+            <div id="loading" class="hidden">
+                <div class="spinner"></div>
+                <p>Running model inference, please wait...</p>
+            </div>
+
+            <div id="results" class="results-grid hidden">
+                <div class="result-card">
+                    <h3>Input MRI (T1ce)</h3>
+                    <img id="mri-img" src="" alt="MRI Slice">
+                </div>
+                <div class="result-card">
+                    <h3>AI Prediction</h3>
+                    <img id="pred-img" src="" alt="Prediction Slice">
+                </div>
+                <div class="result-card">
+                    <h3>XAI Attention Map</h3>
+                    <img id="xai-img" src="" alt="XAI Slice">
+                </div>
+            </div>
+
+            <div id="metrics" class="metrics-card hidden">
+                <h2>Analysis Report</h2>
+                <div class="metrics-grid">
+                    <div class="metric">
+                        <span class="metric-label">Tumor Volume</span>
+                        <span class="metric-value" id="vol-val">-</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Processing Time</span>
+                        <span class="metric-value" id="time-val">-</span>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        document.getElementById('slice-slider').addEventListener('input', function(e) {
+            document.getElementById('slice-val').textContent = e.target.value;
+        });
+
+        document.getElementById('run-btn').addEventListener('click', async function() {
+            const filename = document.getElementById('file-select').value;
+            const sliceIdx = document.getElementById('slice-slider').value;
+            
+            if (!filename) {
+                alert("No file selected!");
+                return;
+            }
+
+            document.getElementById('loading').classList.remove('hidden');
+            document.getElementById('results').classList.add('hidden');
+            document.getElementById('metrics').classList.add('hidden');
+            this.disabled = true;
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        filename: filename,
+                        slice_idx: sliceIdx
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error("Server returned an error");
+                }
+
+                const data = await response.json();
+                
+                // Update images
+                document.getElementById('mri-img').src = "data:image/png;base64," + data.mri_img;
+                document.getElementById('pred-img').src = "data:image/png;base64," + data.pred_img;
+                document.getElementById('xai-img').src = "data:image/png;base64," + data.xai_img;
+
+                // Update metrics
+                document.getElementById('vol-val').textContent = data.tumor_volume + " voxels";
+                document.getElementById('time-val').textContent = data.processing_time + "s";
+
+                // Update slider max bound
+                document.getElementById('slice-slider').max = data.max_slices - 1;
+
+                document.getElementById('results').classList.remove('hidden');
+                document.getElementById('metrics').classList.remove('hidden');
+
+            } catch (error) {
+                alert("Error during inference: " + error.message);
+            } finally {
+                document.getElementById('loading').classList.add('hidden');
+                this.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>
